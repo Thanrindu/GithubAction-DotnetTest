@@ -1,0 +1,77 @@
+name: Build and Deploy to EC2
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build and Package .NET Application
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      # Step 2: Set up .NET environment
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'  # Specify your .NET version here
+
+      # Step 3: Restore dependencies
+      - name: Restore Dependencies
+        run: dotnet restore
+
+      # Step 4: Build the .NET application
+      - name: Build Application
+        run: dotnet build --configuration Release
+
+      # Step 5: Publish the application (creates the files to run on IIS)
+      - name: Publish Application
+        run: dotnet publish --configuration Release --output ./publish
+
+      # Step 6: Package the published app into a zip file
+      - name: Package Application
+        run: |
+          zip -r GithubActionDotnetTest.zip ./publish
+        # Keep the zip file ready for deployment
+
+        # Step 7: Upload the zip artifact to the GitHub release
+      - name: Upload Artifact to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}  # Upload to the release being published
+          asset_path: ./GithubActionDotnetTest.zip  # Path to the zip file you just created
+          asset_name: GithubActionDotnetTestBuild.zip  # Name it as YourApp.zip
+          asset_content_type: application/zip  # Content type for the uploaded artifact
+
+  deploy:
+    name: Deploy to EC2 IIS
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 7: SCP to upload the build artifact to the EC2 instance
+      - name: Upload to EC2
+        uses: appleboy/scp-action@v0.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: ./GithubActionDotnetTest.zip  # The local build artifact created in the build job
+          target: C:/deployments/GithubActionDotnetTest.zip  # The target path on your EC2 instance
+
+      # Step 8: SSH into EC2 and deploy the app
+      - name: Deploy and Restart IIS
+        uses: appleboy/ssh-action@v0.1.1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            Expand-Archive -Path "C:\deployments\GithubActionDotnetTest.zip" -DestinationPath "C:\inetpub\wwwroot\YourApp"
+            Restart-Service -Name W3SVC  # Restart IIS to load the new version

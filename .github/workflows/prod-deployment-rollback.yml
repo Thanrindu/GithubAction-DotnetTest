@@ -1,0 +1,49 @@
+name: Rollback to Previous Release
+
+on:
+  workflow_dispatch:  # Allows manual triggering of rollback
+    inputs:
+      rollback_version:
+        description: 'The version to roll back to (e.g., v1.2.0)'
+        required: true
+
+jobs:
+  rollback:
+    name: Rollback to a Previous Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository based on the rollback version (tag)
+      - name: Checkout Code from Rollback Version
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.rollback_version }}  # Version to rollback to
+
+      # Step 2: Download the artifact from the previous GitHub release
+      - name: Download Release Artifact
+        uses: actions/download-release-asset@v1
+        with:
+          release_id: ${{ github.event.inputs.rollback_version }}
+          asset_name: GithubActionDotnetTestBuild.zip
+          download_path: ./GithubActionDotnetTestBuild.zip
+
+      # Step 3: Upload to EC2 using SCP (to the same location as before)
+      - name: Upload to EC2
+        uses: appleboy/scp-action@v0.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: ./GithubActionDotnetTest.zip  # The local build artifact created in the build job
+          target: C:/deployments/GithubActionDotnetTest.zip  # The target path on your EC2 instance
+
+      # Step 4: SSH into EC2 and deploy the previous version
+      - name: Deploy and Restart IIS
+        uses: appleboy/ssh-action@v0.1.1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            Expand-Archive -Path "C:\deployments\GithubActionDotnetTest.zip" -DestinationPath "C:\inetpub\wwwroot\YourApp"
+            Restart-Service -Name W3SVC  # Restart IIS to load the new version
