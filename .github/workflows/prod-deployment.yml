@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 7: SCP to upload the build artifact to the EC2 instance
+      # Step 8: SCP to upload the build artifact to the EC2 instance
       - name: Upload to EC2
         uses: appleboy/scp-action@v0.2.0
         with:
@@ -65,7 +65,7 @@ jobs:
           source: ./GithubActionDotnetTest.zip  # The local build artifact created in the build job
           target: C:/deployments/GithubActionDotnetTest.zip  # The target path on your EC2 instance
 
-      # Step 8: SSH into EC2 and deploy the app
+      # Step 9: SSH into EC2 and deploy the app
       - name: Deploy and Restart IIS
         uses: appleboy/ssh-action@v0.1.1
         with:
